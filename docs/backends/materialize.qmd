@@ -1,0 +1,441 @@
+# Materialize
+
+[https://materialize.com](https://materialize.com)
+
+![](https://img.shields.io/badge/memtables-fallback-yellow?style=flat-square) ![](https://img.shields.io/badge/inputs-Materialize tables | Streaming sources-blue?style=flat-square) ![](https://img.shields.io/badge/outputs-Materialize tables | CSV | pandas | Parquet | PyArrow-orange?style=flat-square) ![](https://img.shields.io/badge/streaming-SUBSCRIBE-purple?style=flat-square)
+
+## Install
+
+Install Ibis and dependencies for the Materialize backend:
+
+```{.bash}
+pip install 'ibis-framework[materialize]'
+```
+
+And connect:
+
+```{.python}
+import ibis
+
+con = ibis.materialize.connect()  # <1>
+```
+
+1. Adjust connection parameters as needed.
+
+## Connect
+
+### `ibis.materialize.connect`
+
+```python
+con = ibis.materialize.connect(
+    user="materialize",
+    password="password",
+    host="localhost",
+    port=6875,
+    database="materialize",
+    cluster="quickstart",  # Optional: specify default cluster
+)
+```
+
+::: {.callout-note}
+`ibis.materialize.connect` is a thin wrapper around
+[`ibis.backends.materialize.Backend.do_connect`](#ibis.backends.materialize.Backend.do_connect).
+:::
+
+### Connection Parameters
+
+```{python}
+#| echo: false
+#| output: asis
+from _utils import render_do_connect
+
+render_do_connect("materialize")
+```
+
+### `ibis.connect` URL format
+
+In addition to `ibis.materialize.connect`, you can also connect to Materialize by
+passing a properly-formatted connection URL to `ibis.connect`:
+
+```python
+con = ibis.connect(f"materialize://{user}:{password}@{host}:{port}/{database}")
+con = ibis.connect(f"materialize://{user}:{password}@{host}:{port}/{database}/{schema}")
+```
+
+### Cluster management
+
+Materialize uses clusters for resource isolation and workload management. You can specify a default cluster when connecting:
+
+```python
+# Connect with a specific cluster
+con = ibis.materialize.connect(
+    host="localhost",
+    user="materialize",
+    database="materialize",
+    cluster="quickstart"
+)
+```
+
+Use the `current_cluster` property and `set_cluster()` method to manage the active cluster:
+
+```python
+# Check current cluster
+print(con.current_cluster)  # 'quickstart'
+
+# Switch to a different cluster
+con.set_cluster("production")
+print(con.current_cluster)  # 'production'
+
+# List all available clusters
+clusters = con.list_clusters()
+print(clusters)  # ['quickstart', 'production', 'analytics', ...]
+
+# Use different clusters for different workloads
+con.set_cluster("analytics")
+heavy_query = con.table("large_dataset").aggregate(...)
+
+con.set_cluster("quickstart")
+light_query = con.table("small_table").head(10)
+```
+
+Many infrastructure operations (like creating indexes) allow you to specify which cluster should maintain them:
+
+```python
+# Create an index on a specific cluster
+con.create_index("orders_idx", "orders", cluster="analytics")
+```
+
+## Streaming Capabilities
+
+Materialize is a PostgreSQL-compatible streaming SQL database. The key differentiator
+is support for **streaming queries** via the `SUBSCRIBE` command, which continuously
+outputs changes to a table, view, or materialized view as they occur.
+
+### Subscribe to real-time changes
+
+```python
+# Stream changes as they happen
+for batch in con.subscribe("my_table"):
+    # Process each batch of changes
+    print(batch)
+```
+
+The `subscribe()` method supports multiple output formats:
+
+```python
+# pandas DataFrame (default)
+for batch in con.subscribe("my_table", format="pandas"):
+    process_pandas(batch)
+
+# PyArrow RecordBatch (more efficient)
+for batch in con.subscribe("my_table", format="arrow"):
+    process_arrow(batch)
+
+# Polars DataFrame (fast and modern, requires polars to be installed)
+for batch in con.subscribe("my_table", format="polars"):
+    process_polars(batch)
+```
+
+::: {.callout-note}
+The `format="polars"` option requires the `polars` package to be installed.
+You can install it with: `pip install polars` or `pip install 'ibis-framework[polars]'`
+:::
+
+Each batch includes:
+- `mz_timestamp`: Logical timestamp of the change
+- `mz_diff`: `1` for inserts, `-1` for deletes
+- All columns from the source table/view
+
+### Creating sources and sinks
+
+Materialize provides extensive infrastructure for streaming data pipelines:
+
+```python
+# Create a streaming source from Kafka
+con.create_source(
+    "kafka_events",
+    connector="KAFKA",
+    connection="kafka_conn",
+    properties={"TOPIC": "events"},
+    format_spec={"FORMAT": "JSON"},
+)
+
+# Create a streaming sink to export data
+con.create_sink(
+    "kafka_output",
+    sink_from="results_table",
+    connector="KAFKA",
+    connection="kafka_conn",
+    properties={"TOPIC": "output"},
+)
+
+# Create materialized views for incremental computation
+mv = con.create_materialized_view(
+    "real_time_stats",
+    table.group_by("category").aggregate(total=table.amount.sum())
+)
+
+# Subscribe to materialized view changes
+for batch in con.subscribe(mv):
+    update_dashboard(batch)
+```
+
+## Example: Real-time Auction Monitor
+
+Here's a complete example that demonstrates Materialize's streaming capabilities by building a live auction monitoring system. This example uses Materialize's built-in `AUCTION` load generator to simulate real-time auction data:
+
+```python
+import ibis
+from ibis.util import gen_name
+from datetime import datetime
+import time
+
+
+def clear_screen():
+    """Clear terminal screen."""
+    print("\033[2J\033[H", end="")
+
+
+def print_table(all_bids, batch_num, total_updates):
+    """Print a nicely formatted table."""
+    clear_screen()
+
+    # Header
+    print("=" * 100)
+    print("🔨 LIVE AUCTION MONITOR - Powered by Ibis + Materialize")
+    print("=" * 100)
+    print(f"\n📊 Refresh #{batch_num} | Active Auctions: {len(all_bids)}")
+    print(f"⏰ Time: {datetime.now().strftime('%H:%M:%S')}\n")
+
+    # Table header
+    print("🏆 ALL ACTIVE AUCTIONS - WINNING BIDS (Sorted by Highest Bid)")
+    print("-" * 100)
+    print(f"{'Auction ID':<12} {'Item':<30} {'Highest Bid':>12} {'# Bids':>8} {'Winner':<20}")
+    print("-" * 100)
+
+    # Sort by highest bid descending and show all auctions
+    sorted_bids = all_bids.sort_values("amount", ascending=False)
+
+    # Table rows - limit to top 15 for readability
+    for _, row in sorted_bids.head(15).iterrows():
+        auction_id = str(row["auction_id"])[:10]
+        item = str(row["item"])[:28]
+        bid = f"${row['amount']:,.2f}"
+        count = int(row["bid_count"])
+        winner = str(row["buyer"])[:18]
+
+        print(f"{auction_id:<12} {item:<30} {bid:>12} {count:>8} {winner:<20}")
+
+    print("-" * 100)
+    if len(all_bids) > 15:
+        print(f"💡 Showing top 15 of {len(all_bids)} active auctions by bid amount")
+    else:
+        print(f"💡 Showing all {len(all_bids)} active auctions")
+    print("   Each auction is tracked separately - same items can have multiple auctions!")
+    print("   - Visit https://materialize.com/docs/get-started/quickstart/ for more information")
+    print("")
+    print("   Press Ctrl+C to stop streaming...")
+
+
+# Connect to Materialize
+print("🔌 Connecting to Materialize...")
+con = ibis.materialize.connect(
+    host="localhost",
+    port=6875,
+    database="materialize",
+    user="materialize",
+)
+print("✓ Connected!\n")
+
+# Create an AUCTION source that generates simulated auction data
+print("🎰 Creating auction source...")
+auction_source = gen_name("live_auction")
+con.create_source(
+    auction_source,
+    connector="AUCTION",
+    for_all_tables=True,  # Creates bids, auctions, accounts, orgs, users tables
+)
+print("✓ Auction source created!\n")
+
+# Build a materialized view tracking winning bids in real-time
+bids = con.table("bids")
+auctions = con.table("auctions")
+
+# Aggregate bids to get highest bid per auction
+bid_stats = bids.group_by("auction_id").aggregate(
+    amount=bids["amount"].max(),  # Highest bid amount
+    bid_count=bids["id"].count(),  # Number of bids
+    buyer=bids["buyer"].min(),  # Winning bidder (picked arbitrarily)
+)
+
+# Join with auctions to get item and seller details
+winning_bids_expr = (
+    bid_stats
+    .join(auctions, bid_stats["auction_id"] == auctions["id"])
+    .select(
+        auctions["id"].name("auction_id"),
+        auctions["item"],
+        auctions["seller"],
+        bid_stats["amount"],
+        bid_stats["buyer"],
+        bid_stats["bid_count"],
+    )
+)
+
+winning_bids_mv = gen_name("winning_bids")
+print("📊 Creating materialized view...")
+con.create_materialized_view(winning_bids_mv, winning_bids_expr)
+print("✓ Materialized view created!\n")
+
+# Subscribe to real-time updates
+print("🔴 Starting streaming monitor...")
+print("   Waiting for initial data...\n")
+time.sleep(3)
+
+refresh_num = 0
+last_count = 0
+
+try:
+    while True:
+        refresh_num += 1
+
+        # Query the entire materialized view to get current state of ALL auctions
+        all_current_bids = con.table(winning_bids_mv).to_pandas()
+
+        if len(all_current_bids) > 0:
+            # Calculate total updates based on row changes
+            total_updates = len(all_current_bids)
+
+            # Show all items sorted by highest bid
+            print_table(all_current_bids, refresh_num, total_updates)
+            last_count = len(all_current_bids)
+
+        # Refresh every 0.5 seconds to show real-time updates
+        time.sleep(0.5)
+
+except KeyboardInterrupt:
+    print("\n\n✋ Stopped by user")
+finally:
+    print("\n🧹 Cleaning up...")
+    con.drop_materialized_view(winning_bids_mv, force=True)
+    con.drop_source(auction_source, force=True, cascade=True)
+    print("✓ Done!")
+```
+
+## Best Practices
+
+Materialize has specific patterns and best practices for optimal streaming performance.
+See the [official Materialize idiomatic SQL guide](https://materialize.com/docs/transform-data/idiomatic-materialize-sql/)
+for comprehensive recommendations.
+
+### Temporal filters with mz_now()
+
+Materialize provides `mz_now()` for streaming temporal queries:
+
+```python
+# Get Materialize's logical timestamp
+current_time = con.mz_now()
+
+# Filter for recent events (idiomatic pattern)
+# Move operations to the right side of the comparison
+recent = events.filter(
+    con.mz_now() > events.created_at + ibis.interval(days=1)
+)
+```
+
+::: {.callout-tip}
+## Temporal Filter Patterns
+
+According to [Materialize's idiomatic SQL guide](https://materialize.com/docs/transform-data/idiomatic-materialize-sql/#temporal-filters),
+temporal filters should isolate `mz_now()` on one side of the comparison:
+
+**Anti-pattern**:
+```python
+# Don't compute on mz_now() side
+WHERE mz_now() - created_at > INTERVAL '1 day'
+```
+
+**Recommended**:
+```python
+# Move computation to the other side
+WHERE mz_now() > created_at + INTERVAL '1 day'
+```
+
+This enables more efficient incremental computation in materialized views.
+:::
+
+The key difference between `mz_now()` and PostgreSQL's `now()`:
+- **`now()`**: Returns the system clock time (wall-clock time)
+- **`mz_now()`**: Returns the logical timestamp for streaming queries
+
+See [Materialize's now() vs mz_now() documentation](https://materialize.com/docs/sql/functions/now_and_mz_now/)
+for details.
+
+### Window function workarounds
+
+Some window functions are not supported in Materialize. The [idiomatic SQL guide](https://materialize.com/docs/transform-data/idiomatic-materialize-sql/#window-functions)
+provides recommended workarounds:
+
+**Top-1 queries**: Use `distinct(on=...)` which generates efficient `DISTINCT ON` queries
+```python
+# Recommended: Use distinct(on=...) for Top-1 queries
+# This automatically generates: SELECT DISTINCT ON (category) ...
+result = table.distinct(on="category", keep="first")
+
+# Alternative: Use ROW_NUMBER() window function
+result = (
+    table
+    .mutate(
+        rn=ibis.row_number().over(
+            ibis.window(group_by="category", order_by="value")
+        )
+    )
+    .filter(lambda t: t.rn == 1)
+    .drop("rn")
+)
+```
+
+::: {.callout-tip}
+## Native DISTINCT ON Support
+
+The Materialize backend automatically rewrites `distinct(on=..., keep="first")` into
+native PostgreSQL `DISTINCT ON` queries, which are more efficient than window functions for
+Top-1 queries. This is done by detecting when all aggregates are `FIRST()` and rewriting
+the entire aggregation to use `DISTINCT ON`.
+:::
+
+**Top-K queries**: Use `ROW_NUMBER()` window functions for multiple results per group
+```python
+# Top-K (K > 1) - use ROW_NUMBER
+top_3 = (
+    table
+    .mutate(
+        rn=ibis.row_number().over(
+            ibis.window(group_by="category", order_by=ibis.desc("value"))
+        )
+    )
+    .filter(lambda t: t.rn <= 3)
+    .drop("rn")
+)
+```
+
+### PostgreSQL compatibility
+
+Materialize is PostgreSQL wire-compatible, meaning most PostgreSQL clients and tools
+work with Materialize out of the box. The Ibis Materialize backend inherits from the
+PostgreSQL backend and adds streaming-specific functionality.
+
+Key differences from PostgreSQL:
+- **Streaming queries**: `subscribe()` method for real-time change data capture
+- **Infrastructure management**: Create and manage sources, sinks, connections, secrets, and clusters
+- **Optimized for incremental computation**: Materialized views update incrementally as data changes
+- **Temporal functions**: Use `mz_now()` instead of `now()` for streaming queries
+- **Window function limitations**: Some functions unsupported, use workarounds (see [idiomatic SQL guide](https://materialize.com/docs/transform-data/idiomatic-materialize-sql/))
+- **No Python UDFs**: Materialize does not support Python user-defined functions
+
+```{python}
+#| echo: false
+BACKEND = "Materialize"
+```
+
+{{< include ./_templates/api.qmd >}}
