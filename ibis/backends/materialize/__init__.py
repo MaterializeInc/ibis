@@ -10,11 +10,11 @@ from sqlglot import expressions as sge
 import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
-from ibis.backends.materialize.api import mz_now
+from ibis.backends.materialize.api import mz_now, mz_top_k
 from ibis.backends.postgres import Backend as PostgresBackend
 from ibis.backends.sql.compilers.materialize import MaterializeCompiler
 
-__all__ = ("Backend", "mz_now")
+__all__ = ("Backend", "mz_now", "mz_top_k")
 
 
 class Backend(PostgresBackend):
