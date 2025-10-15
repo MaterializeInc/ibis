@@ -6,6 +6,7 @@ import pytest
 
 import ibis
 import ibis.expr.datatypes as dt
+from ibis.backends.materialize.api import mz_now
 from ibis.backends.materialize import operations as mz_ops
 
 
@@ -36,13 +37,13 @@ class TestMzNowCompilation:
 
     def test_compile_mz_now(self, con):
         """Test basic mz_now() compilation."""
-        expr = con.mz_now()
+        expr = mz_now()
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
 
     def test_mz_now_in_select(self, con):
         """Test mz_now() in SELECT statement."""
-        expr = ibis.memtable({"a": [1, 2, 3]}).mutate(ts=con.mz_now())
+        expr = ibis.memtable({"a": [1, 2, 3]}).mutate(ts=mz_now())
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
 
@@ -61,7 +62,7 @@ class TestMzNowCompilation:
         t = t.mutate(event_ts=t.event_ts.cast("timestamp"))
 
         # Filter for events within 30 seconds of mz_now()
-        expr = t.filter(con.mz_now() <= t.event_ts + ibis.interval(seconds=30))
+        expr = t.filter(mz_now() <= t.event_ts + ibis.interval(seconds=30))
         sql = con.compile(expr)
 
         assert "mz_now()" in sql.lower()
@@ -74,11 +75,11 @@ class TestMzNowCompilation:
 
         # Test various comparison operators
         exprs = [
-            t.filter(con.mz_now() > t.event_ts),
-            t.filter(con.mz_now() >= t.event_ts),
-            t.filter(con.mz_now() < t.event_ts),
-            t.filter(con.mz_now() <= t.event_ts),
-            t.filter(con.mz_now() == t.event_ts),
+            t.filter(mz_now() > t.event_ts),
+            t.filter(mz_now() >= t.event_ts),
+            t.filter(mz_now() < t.event_ts),
+            t.filter(mz_now() <= t.event_ts),
+            t.filter(mz_now() == t.event_ts),
         ]
 
         for expr in exprs:
@@ -87,7 +88,7 @@ class TestMzNowCompilation:
 
     def test_mz_now_arithmetic(self, con):
         """Test mz_now() with interval arithmetic."""
-        expr = con.mz_now() - ibis.interval(days=1)
+        expr = mz_now() - ibis.interval(days=1)
         sql = con.compile(expr)
 
         assert "mz_now()" in sql.lower()
@@ -100,7 +101,7 @@ class TestMzNowExecution:
 
     def test_execute_mz_now(self, con):
         """Test that mz_now() can be executed and returns a timestamp."""
-        result = con.execute(con.mz_now())
+        result = con.execute(mz_now())
 
         # Should return a timestamp value
         assert result is not None
@@ -112,7 +113,7 @@ class TestMzNowExecution:
 
     def test_mz_now_vs_now(self, con):
         """Test that mz_now() and now() return different values."""
-        mz_now_result = con.execute(con.mz_now())
+        mz_now_result = con.execute(mz_now())
         now_result = con.execute(ibis.now())
 
         # Both should return timestamps
@@ -139,7 +140,7 @@ class TestMzNowExecution:
         data = data.mutate(created_at=data.created_at.cast("timestamp"))
 
         # Add mz_now() as a column
-        result_expr = data.mutate(current_ts=con.mz_now())
+        result_expr = data.mutate(current_ts=mz_now())
         result = con.execute(result_expr)
 
         # Should have current_ts column
@@ -165,7 +166,7 @@ class TestMzNowExecution:
 
         # Recommended pattern: mz_now() > event_ts + INTERVAL
         # (operation on right side of comparison)
-        expr = data.filter(con.mz_now() > data.event_ts + ibis.interval(seconds=30))
+        expr = data.filter(mz_now() > data.event_ts + ibis.interval(seconds=30))
 
         # Should compile without error
         sql = con.compile(expr)
@@ -179,14 +180,13 @@ class TestMzNowExecution:
 class TestMzNowDocumentation:
     """Test documentation and examples in mz_now()."""
 
-    def test_mz_now_method_exists(self, con):
-        """Test that mz_now() method exists on backend."""
-        assert hasattr(con, "mz_now")
-        assert callable(con.mz_now)
+    def test_mz_now_function_exists(self):
+        """Test that mz_now() function exists."""
+        assert callable(mz_now)
 
-    def test_mz_now_docstring(self, con):
+    def test_mz_now_docstring(self):
         """Test that mz_now() has proper documentation."""
-        doc = con.mz_now.__doc__
+        doc = mz_now.__doc__
         assert doc is not None
 
         # Should explain key differences from now()
@@ -199,16 +199,16 @@ class TestMzNowDocumentation:
         # Should have link to docs
         assert "materialize.com/docs" in doc.lower()
 
-    def test_mz_now_return_type(self, con):
+    def test_mz_now_return_type(self):
         """Test that mz_now() returns correct expression type."""
-        expr = con.mz_now()
+        expr = mz_now()
 
         # Should return a TimestampScalar expression
         assert expr.type().is_timestamp()
 
-    def test_mz_now_examples_in_docstring(self, con):
+    def test_mz_now_examples_in_docstring(self):
         """Test that docstring contains usage examples."""
-        doc = con.mz_now.__doc__
+        doc = mz_now.__doc__
 
         # Should have examples section
         assert "Examples" in doc
@@ -223,7 +223,7 @@ class TestMzNowEdgeCases:
 
     def test_mz_now_multiple_calls(self, con):
         """Test that multiple mz_now() calls work correctly."""
-        expr = ibis.memtable({"a": [1, 2]}).mutate(ts1=con.mz_now(), ts2=con.mz_now())
+        expr = ibis.memtable({"a": [1, 2]}).mutate(ts1=mz_now(), ts2=mz_now())
 
         sql = con.compile(expr)
         # Should have two mz_now() calls
@@ -232,7 +232,7 @@ class TestMzNowEdgeCases:
     def test_mz_now_with_cast(self, con):
         """Test mz_now() with type casting."""
         # Cast to string
-        expr = con.mz_now().cast("string")
+        expr = mz_now().cast("string")
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
         assert "cast" in sql.lower()
@@ -243,7 +243,7 @@ class TestMzNowEdgeCases:
 
         # Use mz_now() in aggregate - since it's scalar, just add it as a column
         expr = data.group_by("group").aggregate(
-            total=data.value.sum(), snapshot_ts=con.mz_now()
+            total=data.value.sum(), snapshot_ts=mz_now()
         )
 
         sql = con.compile(expr)
@@ -260,7 +260,7 @@ class TestMzNowIntegration:
 
         # Add mz_now() and window function
         expr = data.mutate(
-            ts=con.mz_now(), row_num=ibis.row_number().over(order_by=data.value)
+            ts=mz_now(), row_num=ibis.row_number().over(order_by=data.value)
         )
 
         sql = con.compile(expr)
@@ -275,7 +275,7 @@ class TestMzNowIntegration:
         left = left.mutate(ts=left.ts.cast("timestamp"))
 
         # Add mz_now() in join
-        expr = left.join(right, "id").mutate(current=con.mz_now())
+        expr = left.join(right, "id").mutate(current=mz_now())
 
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
@@ -287,7 +287,7 @@ class TestMzNowIntegration:
         data = data.mutate(ts=data.ts.cast("timestamp"))
 
         # Use mz_now() in case expression using ifelse
-        expr = data.mutate(status=ibis.ifelse(con.mz_now() > data.ts, "past", "future"))
+        expr = data.mutate(status=ibis.ifelse(mz_now() > data.ts, "past", "future"))
 
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()

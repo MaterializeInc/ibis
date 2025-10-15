@@ -10,6 +10,7 @@ computation model.
 from __future__ import annotations
 
 import ibis
+from ibis.backends.materialize.api import mz_now
 
 
 class TestDistinctOnPatterns:
@@ -338,7 +339,7 @@ class TestTemporalFilterPatterns:
         events = events.mutate(created_at=events.created_at.cast("timestamp"))
 
         # Idiomatic: mz_now() isolated on one side
-        expr = events.filter(con.mz_now() > events.created_at + ibis.interval(days=1))
+        expr = events.filter(mz_now() > events.created_at + ibis.interval(days=1))
         sql = con.compile(expr)
 
         assert "mz_now()" in sql.lower()
@@ -358,19 +359,19 @@ class TestTemporalFilterPatterns:
         for op in [">", ">=", "<", "<="]:
             if op == ">":
                 expr = events.filter(
-                    con.mz_now() > events.created_at + ibis.interval(days=1)
+                    mz_now() > events.created_at + ibis.interval(days=1)
                 )
             elif op == ">=":
                 expr = events.filter(
-                    con.mz_now() >= events.created_at + ibis.interval(days=1)
+                    mz_now() >= events.created_at + ibis.interval(days=1)
                 )
             elif op == "<":
                 expr = events.filter(
-                    con.mz_now() < events.created_at + ibis.interval(days=1)
+                    mz_now() < events.created_at + ibis.interval(days=1)
                 )
             else:  # <=
                 expr = events.filter(
-                    con.mz_now() <= events.created_at + ibis.interval(days=1)
+                    mz_now() <= events.created_at + ibis.interval(days=1)
                 )
 
             sql = con.compile(expr)
@@ -451,8 +452,8 @@ class TestDisjunctionRewriting:
 
         # Idiomatic pattern: Each OR branch has mz_now() isolated
         expr = events.filter(
-            (con.mz_now() > events.created_at + ibis.interval(days=1))
-            | (con.mz_now() > events.updated_at + ibis.interval(hours=12))
+            (mz_now() > events.created_at + ibis.interval(days=1))
+            | (mz_now() > events.updated_at + ibis.interval(hours=12))
         )
 
         sql = con.compile(expr)
@@ -520,8 +521,8 @@ class TestUnionPatterns:
         union_expr = events_a.union(events_b, distinct=False)
 
         # Add temporal filter using mz_now()
-        expr = union_expr.mutate(query_time=con.mz_now()).filter(
-            con.mz_now() > union_expr.created_at + ibis.interval(days=1)
+        expr = union_expr.mutate(query_time=mz_now()).filter(
+            mz_now() > union_expr.created_at + ibis.interval(days=1)
         )
 
         sql = con.compile(expr)

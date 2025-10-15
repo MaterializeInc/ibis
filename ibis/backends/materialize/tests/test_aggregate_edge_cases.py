@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 import ibis
+from ibis.backends.materialize.api import mz_now
 
 
 @pytest.mark.usefixtures("con")
@@ -285,7 +286,7 @@ class TestAggregateInStreamingContext:
 
         # Aggregate with temporal filter
         expr = (
-            t.filter(con.mz_now() > t.created_at + ibis.interval(hours=1))
+            t.filter(mz_now() > t.created_at + ibis.interval(hours=1))
             .group_by("category")
             .aggregate(total=t.value.sum())
         )
@@ -306,7 +307,7 @@ class TestAggregateInStreamingContext:
 
         # Add mz_now() as a column in aggregate
         expr = t.group_by("category").aggregate(
-            total=t.value.sum(), snapshot_time=con.mz_now()
+            total=t.value.sum(), snapshot_time=mz_now()
         )
 
         sql = con.compile(expr)

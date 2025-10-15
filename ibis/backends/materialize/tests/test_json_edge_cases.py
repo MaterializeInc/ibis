@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 import ibis
+from ibis.backends.materialize.api import mz_now
 
 
 @pytest.mark.usefixtures("con")
@@ -209,7 +210,7 @@ class TestJsonWithOtherFeatures:
         t = t.mutate(metadata=t.metadata.cast("jsonb"))
 
         # Add mz_now() to query with JSON
-        expr = t.mutate(query_time=con.mz_now(), created=t.metadata["created"])
+        expr = t.mutate(query_time=mz_now(), created=t.metadata["created"])
 
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
