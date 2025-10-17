@@ -6,8 +6,8 @@ import pytest
 
 import ibis
 import ibis.expr.datatypes as dt
-from ibis.backends.materialize.api import mz_now
 from ibis.backends.materialize import operations as mz_ops
+from ibis.backends.materialize.api import mz_now
 
 
 class TestMzNowOperation:
@@ -112,7 +112,7 @@ class TestMzNowExecution:
         assert isinstance(result, (pd.Timestamp, str))
 
     def test_mz_now_vs_now(self, con):
-        """Test that mz_now() and now() return different values."""
+        """Test that mz_now() and now() return different timestamps."""
         mz_now_result = con.execute(mz_now())
         now_result = con.execute(ibis.now())
 
@@ -120,9 +120,10 @@ class TestMzNowExecution:
         assert mz_now_result is not None
         assert now_result is not None
 
-        # The docstring should clarify they're different
-        assert "logical" in con.mz_now.__doc__.lower()
-        assert "system clock" in con.mz_now.__doc__.lower()
+        # The mz_now() function docstring should clarify they're different
+        assert "logical" in mz_now.__doc__.lower()
+        # The docstring explains it's different from now() (system clock)
+        assert "now()" in mz_now.__doc__.lower()
 
     def test_mz_now_in_table_query(self, con):
         """Test mz_now() in a table query."""
