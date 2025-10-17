@@ -14,24 +14,18 @@ from ibis.backends.materialize import operations as mz_ops
 from ibis.backends.postgres import Backend as PostgresBackend
 from ibis.backends.sql.compilers.materialize import MaterializeCompiler
 
-
+g
 class Backend(PostgresBackend):
     """Materialize backend for Ibis.
 
-    Materialize is a PostgreSQL wire-compatible streaming SQL database.
-    This backend inherits from PostgreSQL but overrides specific functionality
-    that differs from PostgreSQL behavior.
+    Materialize is live data layer for apps and agents that allows you to create
+    up-to-the-second views into any aspect of your business. It does this by
+    maintaining incrementally updated, consistent views over changing data.
+    Unlike traditional databases that recompute queries on each execution, Materialize
+    continuously updates query results as new data arrives, enabling applications
+    to read fresh, consistent results with low latency.
 
-    Key differences from PostgreSQL:
-    - Temporary tables ARE supported (stored in mz_temp schema, schema_id=0)
-    - Temporary objects don't appear in pg_catalog, must use mz_* catalogs
-    - Transactions cannot mix DDL and DML (CREATE and INSERT must be separate)
-    - No Python UDF support
-    - Optimized for streaming and incremental computation
-    - Use mz_now() instead of now() for streaming queries
-
-    For idiomatic Materialize SQL patterns and best practices, see:
-    https://materialize.com/docs/transform-data/idiomatic-materialize-sql/
+    To learn more about Materialize see: https://materialize.com/docs/
     """
 
     name = "materialize"
@@ -426,10 +420,8 @@ class Backend(PostgresBackend):
     def get_schema(
         self, name: str, *, catalog: str | None = None, database: str | None = None
     ):
-        """Get the schema for a table.
-
-        Overrides PostgreSQL implementation to support Materialize's catalog system.
-        Materialize temporary objects don't appear in pg_catalog, so we use mz_* catalogs.
+        """
+        Get the schema for a table.
         """
         import ibis.common.exceptions as com
         import ibis.expr.schema as sch
@@ -517,11 +509,8 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         temp: bool = False,
         overwrite: bool = False,
     ):
-        """Create a table in Materialize.
-
-        Overrides PostgreSQL implementation to handle Materialize's DDL/DML separation
-        requirement. Materialize transactions cannot mix DDL (CREATE) with DML (INSERT),
-        so we execute them as separate transactions.
+        """
+        Create a table in Materialize.
         """
 
         if obj is None and schema is None:
@@ -627,11 +616,18 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         schema: str | None = None,
         overwrite: bool = False,
     ) -> ibis.expr.types.Table:
-        """Create a materialized view in Materialize.
+        """Create a materialized view
 
-        Materialized views incrementally maintain query results and can be
-        accessed like regular tables. Unlike regular views, materialized views
-        persist results in durable storage and update incrementally as data changes.
+        Materialized views that maintains fresh results by incrementally updating them as new data arrives.
+        They are particularly useful when you need cross-cluster access to results or want to sink data to
+        external systems like Kafka. When you create a materialized view, you specify a cluster responsible
+        for maintaining it, but the results can be queried from any cluster. This allows you to separate the
+        compute resources used for view maintenance from those used for serving queries.
+
+        If you do not need cross-cluster sharing, and you are primarily interested in fast query performance
+        within a single cluster, you may prefer to create a view and index it. In Materialize, indexes on views
+        also maintain results incrementally, but store them in memory, scoped to the cluster where the index was
+        created. This approach offers lower latency for direct querying within that cluster.
 
         Parameters
         ----------
@@ -805,7 +801,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         """Create a source in Materialize.
 
         This method supports creating sources from various systems including:
-        - Load generators (COUNTER, AUCTION, TPCH, MARKETING, KEY VALUE)
         - Kafka/Redpanda message brokers
         - PostgreSQL, MySQL, SQL Server (CDC)
         - Webhooks
@@ -1379,10 +1374,7 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         database: str | None = None,
         schema: str | None = None,
     ) -> None:
-        """Alter a source to add subsources.
-
-        For PostgreSQL or MySQL sources, dynamically add tables as subsources
-        without recreating the entire source.
+        """Alter a source
 
         Parameters
         ----------
@@ -1465,10 +1457,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         """Create a sink in Materialize.
 
         Sinks allow you to stream data from Materialize to external systems.
-        Currently supports Kafka/Redpanda sinks.
-
-        The API is designed for compatibility with RisingWave's create_sink while
-        supporting Materialize-specific features.
 
         Parameters
         ----------
@@ -1642,10 +1630,7 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         database: str | None = None,
         like: str | None = None,
     ) -> list[str]:
-        """List sinks in Materialize.
-
-        Queries the mz_sinks catalog table to list all sinks
-        in the specified database/schema.
+        """List the sinks in Materialize.
 
         Parameters
         ----------
@@ -1922,9 +1907,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
     ) -> list[str]:
         """List connections in Materialize.
 
-        Queries the mz_connections catalog table to list all connections
-        in the specified database/schema.
-
         Parameters
         ----------
         database
@@ -2159,9 +2141,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         like: str | None = None,
     ) -> list[str]:
         """List secrets in Materialize.
-
-        Queries the mz_secrets catalog table to list all secrets
-        in the specified database/schema.
 
         Parameters
         ----------
@@ -2567,9 +2546,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
     def list_cluster_sizes(self) -> list[str]:
         """List available cluster replica sizes in Materialize.
 
-        Queries the mz_cluster_replica_sizes catalog table to discover what
-        cluster sizes are available in this Materialize instance.
-
         Returns
         -------
         list[str]
@@ -2586,7 +2562,6 @@ ORDER BY a.attnum ASC"""  # noqa: S608
         Notes
         -----
         - Available sizes may vary between Materialize deployments
-        - Size names typically follow the pattern: '25cc', '50cc', '100cc', etc.
         - The values in this catalog may change
         - Use this method to discover sizes rather than hardcoding them
 
@@ -2614,13 +2589,19 @@ ORDER BY a.attnum ASC"""  # noqa: S608
     ) -> None:
         """Create an index in Materialize.
 
-        Indexes in Materialize are in-memory arrangements that optimize query
-        performance by maintaining pre-arranged data structures. They are
-        particularly useful for:
-        - Optimizing joins by pre-arranging join keys
-        - Speeding up filters on specific columns
-        - Enabling efficient point lookups
-        - Improving query performance on materialized views
+        In Materialize, indexes store query results in memory within a specific cluster,
+        and keep these results incrementally updated as new data arrives. This ensures that
+        indexed data remains fresh, reflecting the latest changes with minimal latency.
+
+        The primary use case for indexes is to accelerate direct queries issued via SELECT statements.
+        By maintaining fresh, up-to-date results in memory, indexes can significantly optimize
+        query performance, reducing both response time and compute load—especially for resource-intensive
+        operations such as joins, aggregations, and repeated subqueries.
+
+        Because indexes are scoped to a single cluster, they are most useful for accelerating
+        queries within that cluster. For results that must be shared across clusters or persisted
+        to durable storage, consider using a materialized view, which also maintains fresh results
+        but is accessible system-wide.
 
         Parameters
         ----------
