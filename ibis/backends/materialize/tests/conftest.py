@@ -150,13 +150,13 @@ def temp_table(con) -> str:  # noqa: ARG001
 
 
 @pytest.fixture
-def assert_sql(con):  # noqa: ARG001
+def assert_sql(con):
     """Fixture for asserting SQL compilation."""
-    from ibis import to_sql
 
     def check_sql(expr):
-        """Check that expression can be compiled to SQL."""
-        sql = to_sql(expr, dialect="postgres")  # Materialize uses postgres dialect
+        """Check that expression can be compiled to SQL using Materialize backend."""
+        # Use the Materialize backend's compiler, not the generic postgres dialect
+        sql = con.compile(expr)
         assert sql is not None
         assert isinstance(sql, str)
         assert len(sql) > 0

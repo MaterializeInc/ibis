@@ -64,7 +64,7 @@ class TestLoadGenerators:
             assert source_name in con.list_sources()
 
             # Wait for data to generate (auction needs more time than counter)
-            time.sleep(1.5)
+            time.sleep(3.0)
 
             # Query the bids subsource
             bids = con.table("bids")
