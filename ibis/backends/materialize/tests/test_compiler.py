@@ -164,24 +164,31 @@ def test_date_literal_cast(assert_sql):
 
 
 def test_timestamp_from_unix_seconds(simple_table, assert_sql):
-    """Test timestamp from Unix seconds uses to_timestamp()."""
-    expr = simple_table.mutate(ts=simple_table.id.to_timestamp())
+    """Test timestamp from Unix seconds uses to_timestamp().
+
+    Uses as_timestamp('s') method to convert Unix timestamps.
+    """
+    expr = simple_table.mutate(ts=simple_table.id.as_timestamp("s"))
     assert_sql(expr)
 
 
 def test_timestamp_from_unix_milliseconds(simple_table, assert_sql):
-    """Test timestamp from Unix milliseconds converts to seconds."""
-    expr = simple_table.mutate(ts=simple_table.id.to_timestamp(unit="ms"))
+    """Test timestamp from Unix milliseconds converts to seconds.
+
+    Uses as_timestamp('ms') method which divides by 1000 before calling to_timestamp().
+    """
+    expr = simple_table.mutate(ts=simple_table.id.as_timestamp("ms"))
     assert_sql(expr)
 
 
-def test_json_extract_with_path_operator(assert_sql):
-    """Test JSON extraction uses #>> operator for text.
+def test_json_extract_with_cast_to_string(assert_sql):
+    """Test JSON extraction can be converted to text using cast.
 
-    Materialize doesn't have json_extract_path_text, so we use the #>> operator.
+    Materialize doesn't have json_extract_path_text, but we can use
+    bracket notation and cast to string.
     """
     t = ibis.table({"json_col": "json"}, name="json_table")
-    expr = t.mutate(extracted=t.json_col["field1"]["field2"].as_text())
+    expr = t.mutate(extracted=t.json_col["field1"]["field2"].cast("string"))
     assert_sql(expr)
 
 
@@ -247,17 +254,23 @@ def test_date_now_operation(simple_table, assert_sql):
 
 
 def test_interval_from_integer_days(simple_table, assert_sql):
-    """Test creating interval from integer (days)."""
+    """Test creating interval from integer (days).
+
+    Uses as_interval('D') method to convert integers to day intervals.
+    """
     expr = simple_table.mutate(
-        future=simple_table.date_col + simple_table.id.to_interval(unit="D")
+        future=simple_table.date_col + simple_table.id.as_interval("D")
     )
     assert_sql(expr)
 
 
 def test_interval_from_integer_hours(simple_table, assert_sql):
-    """Test creating interval from integer (hours)."""
+    """Test creating interval from integer (hours).
+
+    Uses as_interval('h') method to convert integers to hour intervals.
+    """
     expr = simple_table.mutate(
-        future=simple_table.timestamp_col + simple_table.id.to_interval(unit="h")
+        future=simple_table.timestamp_col + simple_table.id.as_interval("h")
     )
     assert_sql(expr)
 

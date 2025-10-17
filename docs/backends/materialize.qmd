@@ -333,13 +333,15 @@ for comprehensive recommendations.
 Materialize provides `mz_now()` for streaming temporal queries:
 
 ```python
+from ibis.backends.materialize.api import mz_now
+
 # Get Materialize's logical timestamp
-current_time = con.mz_now()
+current_time = mz_now()
 
 # Filter for recent events (idiomatic pattern)
 # Move operations to the right side of the comparison
 recent = events.filter(
-    con.mz_now() > events.created_at + ibis.interval(days=1)
+    mz_now() > events.created_at + ibis.interval(days=1)
 )
 ```
 

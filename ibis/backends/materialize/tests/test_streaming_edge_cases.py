@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 import ibis
+from ibis.backends.materialize.api import mz_now
 
 
 @pytest.mark.usefixtures("con")
@@ -39,7 +40,7 @@ class TestMzNowComplexScenarios:
         )
 
         # Multiple mz_now() filters
-        expr = t.filter((con.mz_now() > t.start_time) & (con.mz_now() < t.end_time))
+        expr = t.filter((mz_now() > t.start_time) & (mz_now() < t.end_time))
 
         sql = con.compile(expr)
         # Should have multiple mz_now() calls
@@ -61,13 +62,13 @@ class TestMzNowComplexScenarios:
         # Complex CASE with mz_now() using nested ifelse
         expr = t.mutate(
             status=ibis.ifelse(
-                con.mz_now() > t.deadline + ibis.interval(days=30),
+                mz_now() > t.deadline + ibis.interval(days=30),
                 "overdue_long",
                 ibis.ifelse(
-                    con.mz_now() > t.deadline,
+                    mz_now() > t.deadline,
                     "overdue",
                     ibis.ifelse(
-                        con.mz_now() > t.deadline - ibis.interval(days=7),
+                        mz_now() > t.deadline - ibis.interval(days=7),
                         "due_soon",
                         "active",
                     ),
@@ -101,7 +102,7 @@ class TestMzNowComplexScenarios:
 
         # Join with temporal condition
         expr = left.join(right, "id").filter(
-            con.mz_now() > left.valid_from + ibis.interval(days=1)
+            mz_now() > left.valid_from + ibis.interval(days=1)
         )
 
         sql = con.compile(expr)
@@ -129,7 +130,7 @@ class TestMzNowComplexScenarios:
         t = t.mutate(created_at=t.created_at.cast("timestamp"))
 
         # Subquery with mz_now()
-        recent = t.filter(con.mz_now() > t.created_at + ibis.interval(days=1))
+        recent = t.filter(mz_now() > t.created_at + ibis.interval(days=1))
 
         # Use subquery result
         expr = recent.group_by("category").aggregate(total=recent.value.sum())
@@ -145,14 +146,14 @@ class TestIntervalEdgeCases:
     def test_interval_zero_duration(self, con):
         """Test interval with zero duration."""
         # Zero interval
-        expr = con.mz_now() + ibis.interval(seconds=0)
+        expr = mz_now() + ibis.interval(seconds=0)
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
 
     def test_interval_negative_duration(self, con):
         """Test interval with negative duration (going backwards in time)."""
         # Negative interval
-        expr = con.mz_now() - ibis.interval(days=7)
+        expr = mz_now() - ibis.interval(days=7)
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
         assert "interval" in sql.lower()
@@ -163,7 +164,7 @@ class TestIntervalEdgeCases:
         interval = (
             ibis.interval(days=1) + ibis.interval(hours=2) + ibis.interval(minutes=30)
         )
-        expr = con.mz_now() + interval
+        expr = mz_now() + interval
 
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
@@ -171,7 +172,7 @@ class TestIntervalEdgeCases:
     def test_interval_very_large(self, con):
         """Test interval with very large duration."""
         # 10 years into the future
-        expr = con.mz_now() + ibis.interval(years=10)
+        expr = mz_now() + ibis.interval(years=10)
         sql = con.compile(expr)
         assert "mz_now()" in sql.lower()
 
@@ -305,7 +306,7 @@ class TestWindowFunctionsStreaming:
 
         # Window function with mz_now() column
         expr = t.mutate(
-            query_time=con.mz_now(),
+            query_time=mz_now(),
             row_num=ibis.row_number().over(
                 ibis.window(group_by="category", order_by="created_at")
             ),
@@ -341,7 +342,7 @@ class TestJoinEdgeCases:
         # Temporal join: only recent orders
         expr = (
             orders.join(customers, "customer_id")
-            .filter(con.mz_now() > orders.order_date + ibis.interval(hours=1))
+            .filter(mz_now() > orders.order_date + ibis.interval(hours=1))
             .select(orders.order_id, customers.name, orders.order_date)
         )
 

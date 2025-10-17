@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 import ibis
+from ibis.backends.materialize.api import mz_now
 
 
 @pytest.mark.usefixtures("con")
@@ -223,8 +224,8 @@ class TestArrayOperationsInStreaming:
         t = t.mutate(created_at=t.created_at.cast("timestamp"))
 
         # Combine array operation with temporal filter
-        expr = t.mutate(tag_count=t.tags.length(), current_time=con.mz_now()).filter(
-            con.mz_now() > t.created_at + ibis.interval(hours=1)
+        expr = t.mutate(tag_count=t.tags.length(), current_time=mz_now()).filter(
+            mz_now() > t.created_at + ibis.interval(hours=1)
         )
 
         # Should compile without error
@@ -248,8 +249,8 @@ class TestArrayOperationsInStreaming:
         t = t.mutate(ts=t.ts.cast("timestamp"))
 
         # Unnest with temporal marker
-        expr = t.mutate(snapshot_time=con.mz_now()).select(
-            t.id, event=t.events.unnest(), snapshot_time=con.mz_now()
+        expr = t.mutate(snapshot_time=mz_now()).select(
+            t.id, event=t.events.unnest(), snapshot_time=mz_now()
         )
 
         sql = con.compile(expr)
@@ -274,7 +275,7 @@ class TestArrayOperationsInStreaming:
             length=t.values.length(),
             first_elem=t.values[0],
             # Add a temporal marker
-            query_time=con.mz_now(),
+            query_time=mz_now(),
         )
 
         # Should compile successfully
